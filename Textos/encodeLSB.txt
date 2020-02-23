@@ -1,0 +1,19 @@
+ef encodeLSB(imgBlock, data):
+	#print imgBlock
+	#print 'Len ' + str(len(data))
+	for lin in xrange(8):
+		for col in xrange(8):
+			if(len(data) > 0):
+				
+				bit = data[:1] #first element from data
+				data = data[1:] #removing first element from data
+				dataByte = imgBlock[lin][col].astype('int32')
+				encodedByte = bin(dataByte)[:-1] + bit
+				print lin, col, encodedByte 
+				if(encodedByte[:1] == '-'):
+					#print str(bin(dataByte)) + ' | ' + encodedByte[1:] + ' | ' + str(dataByte) + ' | ' + str(bit)
+					imgBlock[lin][col] = (-1)*int(encodedByte[1:],2)
+				else:
+					
+					imgBlock[lin][col] = int(encodedByte,2)
+	return imgBlock
