@@ -103,7 +103,7 @@ def zigzagIndices(n):
 
 def blocks8by8(img,xOrigin, yOrigin):
 	
-	block = np.zeros((8,8));
+	block = np.zeros((8,8))
 	
 	for y in range(yOrigin,yOrigin + 8):
 		for x in range(xOrigin, xOrigin + 8):
@@ -546,26 +546,24 @@ def MAE(dataset1, dataset2):
 	return meanAbsoluteError
 	
 	
-def Main(argv):
+def Main(filename):
 
-		type = 3
-		filename = sys.argv[1]
-		coverImage = Image.open(filename)
+		imageFolder = "Imagens/"
+		coverImage = Image.open(imageFolder + filename)
 	
 		
-		file = open('Textos/bohemian.txt')
-		img = Image.open('Imagens/potatoes.tif')
+		hiddenText = open('Textos/bohemian.txt')
+		hiddenImage = Image.open('Imagens/test.png')
 
 		
-		smallImg = pil2array(img)
+		smallImg = pil2array(hiddenImage)
 		smallImg = img2arr(smallImg)
-		
-		text = file.read()
-		
 		
 		print ("Imagem do tipo : %s\n" % coverImage.mode)
 		print ("Entrando no InsertLSB")
 		stegoImg = InsertLSB(coverImage, smallImg, False, True)
+		if stegoImg == -1:
+			return
 		print (stegoImg)
 		print ("Entrando em RetreiveLSB")
 		retImg = RetreiveLSB(stegoImg, False,True)
@@ -583,4 +581,5 @@ def Main(argv):
 		
 
 if __name__ == "__main__":
-	Main(sys.argv[1:])
+	# Image.open("Imagens/testColor.png")
+	Main("medium.png")
