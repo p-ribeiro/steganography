@@ -7,6 +7,8 @@ import ia636 as ia
 import sys
 import math
 import binascii
+import hashlib
+import io
 
 
 bitNroEncode = 0
@@ -15,6 +17,24 @@ messageCode = 1
 dctDecoded = []
 dctEncoded = []
 test = ''
+
+def getImageMd5Hash(img):
+	'''Takes the md5 of a image open with PIL (only for png, for now) 
+	
+	Parameters
+	----------
+	img : PIL
+		Image file open with PIL
+	
+	'''
+	m = hashlib.md5()
+	with io.BytesIO() as memf:
+		img.save(memf, 'PNG')
+		data = memf.getvalue()
+		m.update(data)
+	
+	return m.hexdigest()
+
 
 def array2pil(arr):
 
@@ -43,8 +63,7 @@ def array2pil(arr):
 
 
 def pil2array(pil):
-
-
+	
 	w, h = pil.size
 	binary = 0
 	if pil.mode == '1':
@@ -66,15 +85,16 @@ def pil2array(pil):
 		d = 4 ; shape = (h,w,d)
 	else:
 		raise ("Invalid or unimplemented PIL image mode '%s'" % pil.mode)
-	arr = np.reshape(np.fromstring(pil.tobytes(), 'B', w*h*d), shape)
+	arr = np.reshape(np.frombuffer(pil.tobytes(), 'B', w*h*d), shape)
 	if d > 1:
 		arr = np.swapaxes(np.swapaxes(arr, 0, 2), 1, 2)
 	if binary:
 		arr = arr.astype('?')
 	return arr
 
-# imagem para 1 dim array    
+  
 def img2arr(image):
+	''' Transforms an image to an array '''
 	g = image.flatten()   
 	if (len(image.shape) >= 3):
 		a=np.array([image.shape[0],image.shape[1],image.shape[2]])
@@ -96,9 +116,9 @@ def arr2img(arr):
 	
 # Based on code on https://rosettacode.org/wiki/Zig-zag_matrix#Python
 # Return indices on ZigZag reading of 2D array
-def zigzagIndices(n):
+# def zigzagIndices(n):
 	
-	indexorder = sorted(((x,y) for x in range(n) for y in range(n)), key = lambda x_y: (x_y[0] + x_y[1], -x_y[1] if (x_y[0] +x_y[1])%2 else x_y[1]))
+# 	indexorder = sorted(((x,y) for x in range(n) for y in range(n)), key = lambda x_y: (x_y[0] + x_y[1], -x_y[1] if (x_y[0] +x_y[1])%2 else x_y[1]))
 
 
 def blocks8by8(img,xOrigin, yOrigin):
@@ -170,7 +190,7 @@ def decodeLSB(img, is_dct):
 			
 				bit = bin(byte.astype('int'))[-1:]
 				
-				encodedByte = byte.astype('int32')
+				# encodedByte = byte.astype('int32')
 				
 				message = message + bit
 				bitNro = bitNro + 1
@@ -217,8 +237,28 @@ def encodeIMG(img, binData, is_dct):
 	return imgMod
 	
 def InsertLSB(img, data, is_dct, is_img):
+	'''Insert the message to be hidden into the cover image using the Least Significant Bit (LSB) method 
 	
-	type = 3
+	Parameters
+	----------
+	img: array
+		Is the cover image in array format
+	
+	data: array
+		Is the message (text or image) to be hidden in array format
+
+	is_dct: Boolean
+		If the method used Discrete Cosine Transform (DCT)
+	
+	is_img: Boolean
+		If it message is an image or an text
+	
+	'''
+
+	# imgType == 0 -> the image is in RGB
+	# imgType == 1 -> the image is in RGBA
+	# imgType == 2 -> the image is in 8-bit B&W
+	imgType = None
 	
 	global messageCode
 	global nroBlocks
@@ -229,39 +269,26 @@ def InsertLSB(img, data, is_dct, is_img):
 		binData = bin(int(binascii.hexlify(data), 16))[2:] + bin(0xFFAA)[2:] ##Sinal de fim da mensagem
    
 	dataLen =  len(binData)
-	binDataBackUp = binData
+	# binDataBackUp = binData
 	
-		
-	# if(img.shape[0] == 3):
-		# arrayR, arrayG, arrayB = img
-		# type = 0
-		# print 'A imagem é do tipo RGB\n'
-	# elif(img.shape[0] == 4):
-		# arrayR, arrayG, arrayB, arrayA = img
-		# type = 1
-		# print 'A imagem é do tipo RGBA\n'
-	# else:
-		# arrayL = img
-		# type = 2
-		# print 'A imagem é do tipo Tons de Cinza\n'
-		
+	
 	if(img.mode == "RGBA"):
 		R,G,B,A = img.split()
 		arrayR = np.asarray(R)
 		arrayG = np.asarray(G)
 		arrayB = np.asarray(B)
 		arrayA = np.asarray(A)
-		type = 1
+		imgType = 1
 	elif(img.mode == "L"):
 		arrayL = np.asarray(img)
-		type = 2
+		imgType = 2
 	else:
 		img = img.convert("RGB")
 		R,G,B = img.split()
 		arrayR = np.asarray(R)
 		arrayG = np.asarray(G)
 		arrayB = np.asarray(B)
-		type = 0
+		imgType = 0
 	print(img.size)
 	
 
@@ -282,7 +309,7 @@ def InsertLSB(img, data, is_dct, is_img):
 	print ('Tamanho Total do dado a ser inserido: ' + str(dataLen)+'\n')
 	print ('Quantidade de bits que podem ser modificados em uma camada da imagem: ' + str(capacity) +'\n')
 	
-	if(type == 2): #Mode L
+	if(imgType == 2): #Mode L
 		if(dataLen > capacity):
 			print ('Imagem não possui tamanho suficiente para esconder informação \n')
 			return -1
@@ -291,7 +318,7 @@ def InsertLSB(img, data, is_dct, is_img):
 			imgMod = Image.fromarray(imgMod, 'L')
 			return imgMod
 			
-	elif(type == 1): #mode RGBA
+	elif(imgType == 1): #mode RGBA
 		if(dataLen > capacity * 4):
 			print ('Imagem não possui tamanho suficiente para esconder informação \n')
 			return -1
@@ -346,7 +373,7 @@ def InsertLSB(img, data, is_dct, is_img):
 			#imgMod = np.stack((imgModR, imgModG, imgModB, imgModA))
 			return imgMod
 			
-	elif(type == 0): #mode RGB
+	elif(imgType == 0): #mode RGB
 		if(dataLen > capacity * 3):
 			print ('Imagem não possui tamanho suficiente para esconder informação \n')
 			return -1
@@ -384,7 +411,20 @@ def InsertLSB(img, data, is_dct, is_img):
 	
 
 def RetreiveLSB(img, is_dct, is_img):
+	'''Retreive the data from the cover image
 	
+	Parameters
+	----------
+	img: PIL
+		It's the image in which a message is hidden
+
+	is_dct:
+		If it uses the Discrete Cosine Transform
+	
+	is_img:
+		If the message hidden is an image or a text
+	
+	'''
 	global messageCode
 	messageCode = 1
 	
@@ -392,13 +432,13 @@ def RetreiveLSB(img, is_dct, is_img):
 	
 	# if(img.shape[0] == 3):
 		# arrayR, arrayG, arrayB = img
-		# type = 0
+		# imgType = 0
 	# elif(img.shape[0] == 4):
 		# arrayR, arrayG, arrayB, arrayA = img
-		# type = 1
+		# imgType = 1
 	# else:
 		# arrayL = img
-		# type = 2
+		# imgType = 2
 
 	if(img.mode == "RGBA"):
 		R,G,B,A = img.split()
@@ -406,22 +446,22 @@ def RetreiveLSB(img, is_dct, is_img):
 		arrayG = np.asarray(G)
 		arrayB = np.asarray(B)
 		arrayA = np.asarray(A)
-		type = 1
+		imgType = 1
 	elif(img.mode == "L"):
 		arrayL = np.asarray(img)
-		type = 2
+		imgType = 2
 	else:
 		img = img.convert("RGB")
 		R,G,B = img.split()
 		arrayR = np.asarray(R)
 		arrayG = np.asarray(G)
 		arrayB = np.asarray(B)
-		type = 0
+		imgType = 0
 	
 	
-	if (type == 2):
+	if (imgType == 2):
 		message =  decodeLSB(arrayL.copy(), is_dct)
-	elif (type == 1):
+	elif (imgType == 1):
 		while(messageCode != 0):
 			if (messageCode == 1):
 				messageCode = messageCode + 1
@@ -435,7 +475,7 @@ def RetreiveLSB(img, is_dct, is_img):
 			elif (messageCode == 4):
 				messageCode = messageCode + 1
 				message = message + decodeLSB(arrayA.copy(), is_dct)
-	elif (type == 0):
+	elif (imgType == 0):
 		while(messageCode != 0):
 			if (messageCode == 1):
 				print ("Camada R")
@@ -466,118 +506,150 @@ def RetreiveLSB(img, is_dct, is_img):
 		n = int('0b'+message,2)
 		return binascii.unhexlify('%x' % n)
 		
-def psnr(dataset1, dataset2, maximumDataValue):
+# def psnr(dataset1, dataset2, maximumDataValue):
    
-	# Make sure that the provided data sets are numpy ndarrays, if not
-	# convert them and flatten te data sets for analysis
-	if type(dataset1).__module__ != np.__name__:
-	  d1 = np.asarray(dataset1).flatten()
-	else:
-	  d1 = dataset1.flatten()
+# 	# Make sure that the provided data sets are numpy ndarrays, if not
+# 	# convert them and flatten te data sets for analysis
+# 	if type(dataset1).__module__ != np.__name__:
+# 	  d1 = np.asarray(dataset1).flatten()
+# 	else:
+# 	  d1 = dataset1.flatten()
 
-	if type(dataset2).__module__ != np.__name__:
-	  d2 = np.asarray(dataset2).flatten()
-	else:
-	  d2 = dataset2.flatten()
+# 	if type(dataset2).__module__ != np.__name__:
+# 	  d2 = np.asarray(dataset2).flatten()
+# 	else:
+# 	  d2 = dataset2.flatten()
 
-	# Make sure that the provided data sets are the same size
-	if d1.size != d2.size:
-	  raise ValueError('Provided datasets must have the same size/shape')
+# 	# Make sure that the provided data sets are the same size
+# 	if d1.size != d2.size:
+# 	  raise ValueError('Provided datasets must have the same size/shape')
 
-	# Check if the provided data sets are identical, and if so, return an
-	# infinite peak-signal-to-noise ratio
-	if np.array_equal(d1, d2):
-	  return float('inf')
+# 	# Check if the provided data sets are identical, and if so, return an
+# 	# infinite peak-signal-to-noise ratio
+# 	if np.array_equal(d1, d2):
+# 	  return float('inf')
 
-	error = d1.astype(np.float64)-d2.astype(np.float64)
+# 	error = d1.astype(np.float64)-d2.astype(np.float64)
 
-	# Compute the mean-squared error
-	meanSquaredError = np.sum(error**2) / error.size
+# 	# Compute the mean-squared error
+# 	meanSquaredError = np.sum(error**2) / error.size
 
-	# Return the peak-signal-to-noise ratio
-	return 10.0 * np.log10(maximumDataValue**2 / meanSquaredError)
+# 	# Return the peak-signal-to-noise ratio
+# 	return 10.0 * np.log10(maximumDataValue**2 / meanSquaredError)
    
-def MSE(dataset1, dataset2):
+# def MSE(dataset1, dataset2):
 
-	# Make sure that the provided data sets are numpy ndarrays, if not
-	# convert them and flatten te data sets for analysis
-	if type(dataset1).__module__ != np.__name__:
-	  d1 = np.asarray(dataset1).flatten()
-	else:
-	  d1 = dataset1.flatten()
+# 	# Make sure that the provided data sets are numpy ndarrays, if not
+# 	# convert them and flatten te data sets for analysis
+# 	if type(dataset1).__module__ != np.__name__:
+# 	  d1 = np.asarray(dataset1).flatten()
+# 	else:
+# 	  d1 = dataset1.flatten()
 
-	if type(dataset2).__module__ != np.__name__:
-	  d2 = np.asarray(dataset2).flatten()
-	else:
-	  d2 = dataset2.flatten()
+# 	if type(dataset2).__module__ != np.__name__:
+# 	  d2 = np.asarray(dataset2).flatten()
+# 	else:
+# 	  d2 = dataset2.flatten()
 
-	# Make sure that the provided data sets are the same size
-	if d1.size != d2.size:
-	  raise ValueError('Provided datasets must have the same size/shape')
+# 	# Make sure that the provided data sets are the same size
+# 	if d1.size != d2.size:
+# 	  raise ValueError('Provided datasets must have the same size/shape')
 
-	error = d1.astype(np.float64)-d2.astype(np.float64)
+# 	error = d1.astype(np.float64)-d2.astype(np.float64)
 
-	# Return the mean-squared error
-	meanSquaredError = np.sum(error**2) / error.size
-	return meanSquaredError
+# 	# Return the mean-squared error
+# 	meanSquaredError = np.sum(error**2) / error.size
+# 	return meanSquaredError
    
-def MAE(dataset1, dataset2):
+# def MAE(dataset1, dataset2):
 
-	# Make sure that the provided data sets are numpy ndarrays, if not
-	# convert them and flatten te data sets for analysis
-	if type(dataset1).__module__ != np.__name__:
-	  d1 = np.asarray(dataset1).flatten()
-	else:
-	  d1 = dataset1.flatten()
+# 	# Make sure that the provided data sets are numpy ndarrays, if not
+# 	# convert them and flatten te data sets for analysis
+# 	if type(dataset1).__module__ != np.__name__:
+# 	  d1 = np.asarray(dataset1).flatten()
+# 	else:
+# 	  d1 = dataset1.flatten()
 
-	if type(dataset2).__module__ != np.__name__:
-	  d2 = np.asarray(dataset2).flatten()
-	else:
-	  d2 = dataset2.flatten()
+# 	if type(dataset2).__module__ != np.__name__:
+# 	  d2 = np.asarray(dataset2).flatten()
+# 	else:
+# 	  d2 = dataset2.flatten()
 
-	# Make sure that the provided data sets are the same size
-	if d1.size != d2.size:
-	  raise ValueError('Provided datasets must have the same size/shape')
+# 	# Make sure that the provided data sets are the same size
+# 	if d1.size != d2.size:
+# 	  raise ValueError('Provided datasets must have the same size/shape')
 
-	error = d1.astype(np.float64)-d2.astype(np.float64)
+# 	error = d1.astype(np.float64)-d2.astype(np.float64)
 
-	# Return the mean absolute error
-	meanAbsoluteError = np.sum(abs(error)) / error.size
-	return meanAbsoluteError
+# 	# Return the mean absolute error
+# 	meanAbsoluteError = np.sum(abs(error)) / error.size
+# 	return meanAbsoluteError
 	
 	
 def Main(filename):
-
-		imageFolder = "Imagens/"
-		coverImage = Image.open(imageFolder + filename)
 	
-		
-		hiddenText = open('Textos/bohemian.txt')
-		hiddenImage = Image.open('Imagens/test.png')
+	is_img = False
+	imageFolder = "Imagens/"
+	textFolder = "Textos/"
 
+	if is_img:
 		
-		smallImg = pil2array(hiddenImage)
-		smallImg = img2arr(smallImg)
+		hiddenImage = Image.open(imageFolder + 'lilMona.jpg')
+		# get the md5 hash of the image to be hidden
+		hiddenImageHash = getImageMd5Hash(hiddenImage)
+		smallImage = pil2array(hiddenImage)
+		message = img2arr(smallImage)
+	else:
+		message = open(textFolder+'alice30.txt','rb').read()
+		messageHash = hashlib.md5(message).hexdigest()
+	
+
+
+	# open cover image and transform it to an array
+	coverImage = Image.open(imageFolder + filename)
+	
+	
+	## ------------------- Hidding image or text -------------------------- ##
+	print ("Imagem do tipo : %s\n" % coverImage.mode)
+	print ("Entrando no InsertLSB")
+	stegoImg = InsertLSB(coverImage, message, False, is_img)
+	if stegoImg == -1:
+		return
+	## ------------------ Retreiving the image or text ------------------- ##
+	print ("Entrando em RetreiveLSB")
+	retInfo = RetreiveLSB(stegoImg, False,is_img)
+	stegoImg.save("Stego1.png","PNG")
+	
+	if is_img:
+		retInfo = arr2img(retInfo)
+		retInfo = array2pil(np.asarray(retInfo))
 		
-		print ("Imagem do tipo : %s\n" % coverImage.mode)
-		print ("Entrando no InsertLSB")
-		stegoImg = InsertLSB(coverImage, smallImg, False, True)
-		if stegoImg == -1:
-			return
-		print (stegoImg)
-		print ("Entrando em RetreiveLSB")
-		retImg = RetreiveLSB(stegoImg, False,True)
-		
-		stegoImg.save("Stego1.png","PNG")
-		
-		retImg = arr2img(retImg)
-		retImg = array2pil(np.asarray(retImg))
-		retImg.save("RetImg.png","PNG")
-		
-		stegoImg.show()
-		retImg.show()
-		
-		
+		## ------------------ Comparing images ------------------------------- ##
+		retImgHash = getImageMd5Hash(retInfo)
+		if(retImgHash == hiddenImageHash):
+			print("The images are equal")
+		else:
+			print("Hash of original image: " + messageHash)
+			print("\nHash of retrived image: " + retImgHash)
+		## ---------------- Saving and showing the results ------------------ ##
+		retInfo.save("RetImg.png","PNG")
+		retInfo.show()
+	else:
+		retHash = hashlib.md5(retInfo).hexdigest()
+		retText = open("RetTxt.txt",'wb')
+		retText.write(retInfo)
+		retText.close()
+
+	if retHash == messageHash:
+		print("The text retreived is the same")
+	else:
+		print("Hash of original message: " + messageHash)
+		print("\nHash of retrived message: " + retHash)
+
+	stegoImg.show()
+	
+	
+	
 		
 
 if __name__ == "__main__":
