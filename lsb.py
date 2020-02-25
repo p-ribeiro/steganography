@@ -5,367 +5,384 @@ import ia636 as ia
 import sys
 import math
 import binascii
+import hashlib
+import io
+from enum import Enum
 
 
+## ---------------------------------------- Global variables 
 bitNroEncode = 0
 nroBlocks = 0
 messageCode = 1
+dctDecoded = []
+dctEncoded = []
 
 
-def unPadding(l, h, img):
-	print l,h
-	img = img[:h,:l]
-	return img
+## -------------------------------------- Enums
+class ImageType(Enum):
+	RGB = 0
+	RGBA = 1
+	L = 2 # 8-Bit B&W
 
-#padding is working, but i wont use it: message on border being cropped when restoring original image dimensions
-def zeroPadding(img):
-	
-	padRight = 8 - (img.size[0] % 8)
-	padBottom = 8 - (img.size[1] % 8)
-	
-	npad = ((0,padBottom),(0,padRight),(0,0))
-	
-	return np.pad(img, pad_width = npad, mode = 'constant', constant_values = 0)
 
 def blocks8by8(img,xOrigin, yOrigin):
-	
-	block = np.zeros((8,8));
-	
-	for y in xrange(yOrigin,yOrigin + 8):
-		for x in xrange(xOrigin, xOrigin + 8):
+
+	block = np.zeros((8,8))
+
+	for y in range(yOrigin,yOrigin + 8):
+		for x in range(xOrigin, xOrigin + 8):
 			if img.ndim > 2:
 				block[x - xOrigin][y-yOrigin] = img[x][y][0]
 			else:
 				block[x - xOrigin][y-yOrigin] = img[x][y]
 	return block
-		
+
 def insertBlock(block,imgMod, yOrigin, xOrigin):
-	for lin in xrange(8):
-		for col in xrange(8):
+	for lin in range(8):
+		for col in range(8):
 			imgMod[lin + yOrigin][col + xOrigin] = block[lin][col]
-			
-	return imgMod		
-		
-def is_grey_scale(im):
-    w,h = im.size
-    for i in range(w):
-        for j in range(h):
-            r,g,b = im.getpixel((i,j))
-            if r != g != b: return False
-    return True		
 
+	return imgMod       
 
-
-#Funciona!!	
 def encodeLSB(imgBlock, data):
-
 	global bitNroEncode
-	global matrixTest
 	controlBlock = imgBlock.copy()
-	
-	for lin in xrange(8):
-		for col in xrange(8):
+
+	for lin in range(8):
+		for col in range(8):
 			if(len(data) > 0):
 				bit = data[:1] #first element from data
 				data = data[1:] #removing first element from data
 				dataByte = imgBlock[lin][col].astype('int32')
 				encodedByte = bin(dataByte)[:-1] + bit
-					
+
 				BackUp = imgBlock[lin][col]
 				bitNroEncode = bitNroEncode + 1
 				if(encodedByte[:1] == '-'):
 					imgBlock[lin][col] = (-1)*int(encodedByte[1:],2)
 				else:
 					imgBlock[lin][col] = int(encodedByte,2)
-					
-					
-	return imgBlock
 
-	
-#Funciona!!
-def decodeLSB(img):
+
+	return imgBlock
+def decodeLSB(img, is_dct):
 	message = ''
 	cnt = 1
 	bitNro = 0 
-	
+
 	h = img.shape[0] % 8
 	w = img.shape[1] % 8
-	
+
 	global messageCode
-	print 'image shape (L,C)?'
-	print img.shape[0]
-	
-	for lin in xrange(0,img.shape[0]-h,8):
-		for col in xrange(0,img.shape[1]-w,8):
-			
-			
-			b = blocks8by8(img,lin,col)
-			
-			
+	global dctDecoded
+
+	for lin in range(0,img.shape[0]-h,8):
+		for col in range(0,img.shape[1]-w,8):
+        
+			b = blocks8by8(img,lin, col)
+
+			if(is_dct):
+				b = ia.iadct(b - 128).round().astype(int)
+				if (bitNro == 0):
+					dctDecoded = b
+
+
 			for idx,byte in np.ndenumerate(b):
-			
-				bit = bin(byte.astype('int32'))[-1:]
-				
-				encodedByte = byte.astype('int32')
-				
+            
+				bit = bin(byte.astype('int'))[-1:]
+
+				# encodedByte = byte.astype('int32')
+
 				message = message + bit
 				bitNro = bitNro + 1
 				if message[-16:] == bin(0xFFAA)[2:]:
 					messageCode = 0
-					print "Message Code"
-					print messageCode
-					print len(message)
 					return message[:-16]
-				
+
 			cnt = cnt + 1
-			
-				
-				
-	return message	
-	
-	
-def encodeIMG(img, binData):
-	# For each 8x8 Block, a dct is made, information is added and idct is made so the image is mounted again
+
+
+	return message  
+
+def encodeIMG(img, binData, is_dct):
+	# For each 8x8 Block, information is added and the image is mounted again
 	h = img.shape[0] % 8
 	w = img.shape[1] % 8
 	base2D = np.zeros_like(img)
 	global nroBlocks
-	
-	for lin in xrange(0,img.shape[0]-h,8):
-		for col in xrange(0,img.shape[1]-w,8):
+	global dctEncoded
+
+	nroInit = nroBlocks
+	for lin in range(0,img.shape[0]-h,8):
+		for col in range(0,img.shape[1]-w,8):
 			b = blocks8by8(img,lin, col)
+
 			if (nroBlocks > 0):
-				
+				if(is_dct):
+					b = ia.iadct(b - 128).round().astype(int)
+
 				encodedBlock = encodeLSB(b.copy(),binData[:64])
 				binData = binData[64:]
-				b = encodedBlock
-				
+
+				if(is_dct):
+					if(nroBlocks == nroInit):
+						dctEncoded = b
+					b = ((ia.iaidct(b) + 128).round()).astype(int)
+				else:
+					b = encodedBlock
+
 				nroBlocks = nroBlocks - 1
-				
+
 			imgMod = insertBlock(b,base2D,lin,col)
 	return imgMod
 
-def Main(argv):
-	filename = sys.argv[1]
-	img = Image.open(filename)
-	
-	file = open('alice30.txt','r')
-	
-	data = file.read()
-	
-	type = 3
-	
+
+def InsertLSB(img, data, is_dct, is_img):
+	'''Insert the message to be hidden into the cover image using the Least Significant Bit (LSB) method 
+
+	Parameters
+	----------
+	img: array
+		Is the cover image in array format
+
+	data: array
+		Is the message (text or image) to be hidden in array format
+	is_dct: Boolean
+		If the method used Discrete Cosine Transform (DCT)
+
+	is_img: Boolean
+		If it message is an image or an text
+
+	'''
+	imgType = None
+
 	global messageCode
-	
-	binData = bin(int(binascii.hexlify(data), 16))[2:] + bin(0xFFAA)[2:]
-	#print binData
+	global nroBlocks
+
+	if is_img:
+		binData = ''.join([format(x,'09b') for x in data]) + bin(0xFFAA)[2:] ##Sinal de fim da mensagem
+	else:   
+		binData = bin(int(binascii.hexlify(data), 16))[2:] + bin(0xFFAA)[2:] ##Sinal de fim da mensagem
+
 	dataLen =  len(binData)
-	print dataLen
-	binDataBackUp = binData
-	#decoding : 
-	n = int('0b'+binData,2)
-	#print "decoded: " + binascii.unhexlify('%x' % n)
-	
-	print img.mode
-	
+	# binDataBackUp = binData
+
+
 	if(img.mode == "RGBA"):
 		R,G,B,A = img.split()
 		arrayR = np.asarray(R)
 		arrayG = np.asarray(G)
 		arrayB = np.asarray(B)
 		arrayA = np.asarray(A)
-		type = 1
+		imgType = ImageType.RGBA
 	elif(img.mode == "L"):
 		arrayL = np.asarray(img)
-		type = 2
+		imgType = ImageType.L
 	else:
 		img = img.convert("RGB")
 		R,G,B = img.split()
 		arrayR = np.asarray(R)
 		arrayG = np.asarray(G)
 		arrayB = np.asarray(B)
-		type = 0
-	print img.size
-	
-	#adds zero to the borders so the image can have a interger number of
-	#blocks 8x8
-	
-	
-	global nroBlocks
+		imgType = ImageType.RGB
+	print(img.size)
+
 	nroBlocks = math.ceil(dataLen/64.0)
 	imgMod = []
-	
+
+	# if type == 2:
+		# h = img.shape[0]
+		# w = img.shape[1]
+	# else:
+		# h = img.shape[1]
+		# w = img.shape[2]
 	w = img.size[0]
 	h = img.size[1]
-	
+
+
 	capacity = (w - w%8)*(h - h%8)
-	
-	print capacity
-	
-	print 'type = ' + str(type)
-	if(type == 2): #Mode L
+	print ('Tamanho Total do dado a ser inserido: ' + str(dataLen)+'\n')
+	print ('Quantidade de bits que podem ser modificados em uma camada da imagem: ' + str(capacity) +'\n')
+
+	if(imgType == ImageType.L):
 		if(dataLen > capacity):
+			print ('Imagem não possui tamanho suficiente para esconder informação \n')
 			return -1
 		else:
-			imgMod = encodeIMG(arrayL, binData)
+			imgMod = encodeIMG(arrayL, binData, is_dct)
 			imgMod = Image.fromarray(imgMod, 'L')
-			
-	elif(type == 1): #mode RGBA
+			return imgMod
+
+	elif(imgType == ImageType.RGBA): #mode RGBA
 		if(dataLen > capacity * 4):
-			#print 'hi'
+			print ('Imagem não possui tamanho suficiente para esconder informação \n')
 			return -1
 		else:
 			nroLayers = math.ceil(dataLen/float(capacity))
+			print ('Número de camadas necessárias para armazenar o dado: ' + str(nroLayers)+'\n')
+
 			if(nroLayers == 4):
-				print 'nroLayers: ' + str(nroLayers)
-				imgModR = encodeIMG(arrayR, binData[:capacity])
+				imgModR = encodeIMG(arrayR, binData[:capacity], is_dct)
 				binData = binData[capacity:]
-			
-				imgModG = encodeIMG(arrayG, binData[:capacity])
+
+				imgModG = encodeIMG(arrayG, binData[:capacity], is_dct)
 				binData = binData[capacity:]
-			
-				imgModB = encodeIMG(arrayB, binData[:capacity])
+
+				imgModB = encodeIMG(arrayB, binData[:capacity], is_dct)
 				binData = binData[capacity:]
-			
-				imgModA = encodeIMG(arrayA, binData[:capacity])
-			
-			
+
+				imgModA = encodeIMG(arrayA, binData[:capacity], is_dct)
+
+
 			elif (nroLayers == 3):
-				print 'nroLayers: ' + str(nroLayers)
-				imgModR = encodeIMG(arrayR, binData[:capacity])
+				imgModR = encodeIMG(arrayR, binData[:capacity], is_dct)
 				binData = binData[capacity:]
-			
-				imgModG = encodeIMG(arrayG, binData[:capacity])
+
+				imgModG = encodeIMG(arrayG, binData[:capacity], is_dct)
 				binData = binData[capacity:]
-			
-				imgModB = encodeIMG(arrayB, binData[:capacity])
-				
+
+				imgModB = encodeIMG(arrayB, binData[:capacity], is_dct)
+
 				imgModA = arrayA
-				
+
 			elif (nroLayers == 2):
-				print 'nroLayers: ' + str(nroLayers)
-				imgModR = encodeIMG(arrayR, binData[:capacity])
+				imgModR = encodeIMG(arrayR, binData[:capacity], is_dct)
 				binData = binData[capacity:]
-			
-				imgModG = encodeIMG(arrayG, binData[:capacity])
+
+				imgModG = encodeIMG(arrayG, binData[:capacity], is_dct)
 				imgModB = arrayB
 				imgModA = arrayA
-				
-				
+
+
 			elif (nroLayers == 1):
-				print 'nroLayers: ' + str(nroLayers)
-				imgModR = encodeIMG(arrayR, binData)
-				print np.ravel(imgModR)[:64]
+				imgModR = encodeIMG(arrayR, binData, is_dct)
 				imgModG = arrayG
 				imgModB = arrayB
 				imgModA = arrayA
-			
+
 			R = Image.fromarray(imgModR)
 			G = Image.fromarray(imgModG)
 			B = Image.fromarray(imgModB)
 			A = Image.fromarray(imgModA)
 			imgMod = Image.merge('RGBA',(R,G,B,A))
-			
-	elif(type == 0): #mode RGB
+			#imgMod = np.stack((imgModR, imgModG, imgModB, imgModA))
+			return imgMod
+
+	elif(imgType == ImageType.RGB): #mode RGB
 		if(dataLen > capacity * 3):
+			print ('Imagem não possui tamanho suficiente para esconder informação \n')
 			return -1
 		else:
 			nroLayers = math.ceil(dataLen/float(capacity))
+			print ('Número de camadas necessárias para armazenar o dado: ' + str(nroLayers)+'\n')
 			if (nroLayers == 3):
-				imgModR = encodeIMG(arrayR, binData[:capacity])
+				imgModR = encodeIMG(arrayR, binData[:capacity], is_dct)
 				binData = binData[capacity:]
-			
-				imgModG = encodeIMG(arrayG, binData[:capacity])
+
+				imgModG = encodeIMG(arrayG, binData[:capacity], is_dct)
 				binData = binData[capacity:]
-			
-				imgModB = encodeIMG(arrayB, binData[:capacity])
-				
+
+				imgModB = encodeIMG(arrayB, binData[:capacity], is_dct)
 			elif (nroLayers == 2):
-				
-				imgModR = encodeIMG(arrayR, binData[:capacity])
+            
+				imgModR = encodeIMG(arrayR, binData[:capacity], is_dct)
 				binData = binData[capacity:]
-			
-				imgModG = encodeIMG(arrayG, binData[:capacity])
-				
+
+				imgModG = encodeIMG(arrayG, binData[:capacity], is_dct)
+
 				imgModB = arrayB
-				
+
 			elif (nroLayers == 1):
-				imgModR = encodeIMG(arrayR, binData)
+				imgModR = encodeIMG(arrayR, binData, is_dct)
 				imgModG = arrayG
 				imgModB = arrayB
-			
+
 			R = Image.fromarray(imgModR)
 			G = Image.fromarray(imgModG)
 			B = Image.fromarray(imgModB)
 			imgMod = Image.merge('RGB',(R,G,B))
-	
-	
-	imgMod.save("ImgModColor.png","PNG")
-	
-	# Decoding Part:
-	message = ''
-	
-	print 'Hi Test'
-	
-	if(imgMod.mode == "RGBA"):
-		R,G,B,A = imgMod.split()
-		arrayR = np.asarray(R)
-		print np.ravel(arrayR)[:64]
+			#imgMod = np.stack((imgModR,imgModG,imgModB))
+			return imgMod
 
+def RetreiveLSB(img, is_dct, is_img):
+	'''Retreive the data from the cover image
+
+	Parameters
+	----------
+	img: PIL
+		It's the image in which a message is hidden
+	is_dct:
+		If it uses the Discrete Cosine Transform
+
+	is_img:
+		If the message hidden is an image or a text
+
+	'''
+	global messageCode
+	messageCode = 1
+
+	message = ''
+	if(img.mode == "RGBA"):
+		R,G,B,A = img.split()
+		arrayR = np.asarray(R)
 		arrayG = np.asarray(G)
 		arrayB = np.asarray(B)
 		arrayA = np.asarray(A)
-		type = 1
-	elif(imgMod.mode == "L"):
-		arrayL = np.asarray(imgMod)
-		type = 2
+		imgType = ImageType.RGBA
+	elif(img.mode == "L"):
+		arrayL = np.asarray(img)
+		imgType = ImageType.L
 	else:
-		imgMod = imgMod.convert("RGB")
-		R,G,B = imgMod.split()
+		img = img.convert("RGB")
+		R,G,B = img.split()
 		arrayR = np.asarray(R)
 		arrayG = np.asarray(G)
 		arrayB = np.asarray(B)
-		type = 0
-	
-	
-	if (type == 2):
-		message =  decodeLSB(arrayL.copy())
-	elif (type == 1):
+		imgType = ImageType.RGB
+
+
+	if (imgType == ImageType.L):
+		message =  decodeLSB(arrayL.copy(), is_dct)
+	elif (imgType == ImageType.RGBA):
 		while(messageCode != 0):
 			if (messageCode == 1):
 				messageCode = messageCode + 1
-				message = message + decodeLSB(arrayR.copy())
+				message = message + decodeLSB(arrayR.copy(), is_dct)
 			elif (messageCode == 2):
 				messageCode = messageCode + 1
-				message = message + decodeLSB(arrayG.copy())
+				message = message + decodeLSB(arrayG.copy(), is_dct)
 			elif (messageCode == 3):
 				messageCode = messageCode + 1
-				message = message + decodeLSB(arrayB.copy())
+				message = message + decodeLSB(arrayB.copy(), is_dct)
 			elif (messageCode == 4):
 				messageCode = messageCode + 1
-				message = message + decodeLSB(arrayA.copy())
-	elif (type == 0):
+				message = message + decodeLSB(arrayA.copy(), is_dct)
+	elif (imgType == ImageType.RGB):
 		while(messageCode != 0):
 			if (messageCode == 1):
+				print ("Camada R")
 				messageCode = messageCode + 1
-				message = message + decodeLSB(arrayR.copy())
+				message = message + decodeLSB(arrayR.copy(), is_dct)
 			elif (messageCode == 2):
+				print ("Camada G")
 				messageCode = messageCode + 1
-				message = message + decodeLSB(arrayG.copy())
+				message = message + decodeLSB(arrayG.copy(), is_dct)
 			elif (messageCode == 3):
 				messageCode = messageCode + 1
-				message = message + decodeLSB(arrayB.copy())
-			
-			
+				message = message + decodeLSB(arrayB.copy(), is_dct)
 
-	print message[:64]
-	n = int('0b'+message,2)
-	print binascii.unhexlify('%x' % n)
-	
-	
-	
-	imgMod.show()
-	
-	
-if __name__ == "__main__":
-	Main(sys.argv[1:])
+	print ("Decoding message")
+	if is_img:
+		msg = []
+		while len(message) > 0:
+			msg.append(message[:9])
+			message = message[9:]
+		imgArr = [int(n,2) for n in msg]
+		return imgArr
+	elif is_dct:
+		#return message
+		n = int('0b'+message,2)
+		#return binascii.unhexlify('%x' % n)
+	else:
+		n = int('0b'+message,2)
+		return binascii.unhexlify('%x' % n)
