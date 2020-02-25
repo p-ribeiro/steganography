@@ -143,7 +143,7 @@ def Main(filename):
 	## ------------------ Retreiving the image or text ------------------- ##
 	print ("Entrando em RetreiveLSB")
 	retInfo = lsb.RetreiveLSB(stegoImg, False,is_img)
-	stegoImg.save("Stego1.png","PNG")
+	stegoImg.save("Results/Stego1.png","PNG")
 	
 	if is_img:
 		retInfo = arr2img(retInfo)
@@ -157,11 +157,11 @@ def Main(filename):
 			print("Hash of original image: " + messageHash)
 			print("\nHash of retrived image: " + retImgHash)
 		## ---------------- Saving and showing the results ------------------ ##
-		retInfo.save("RetImg.png","PNG")
+		retInfo.save("Results/RetImg.png","PNG")
 		retInfo.show()
 	else:
 		retHash = hashlib.md5(retInfo).hexdigest()
-		retText = open("RetTxt.txt",'wb')
+		retText = open("Results/RetTxt.txt",'wb')
 		retText.write(retInfo)
 		retText.close()
 
