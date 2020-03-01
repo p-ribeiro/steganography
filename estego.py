@@ -11,6 +11,7 @@ import hashlib
 import io
 from enum import Enum
 import lsb
+import time
 
 
 ## -------------------------------------- Functions
@@ -111,51 +112,56 @@ def arr2img(arr):
 		img=np.reshape(arr[3:],(arr[0],arr[1],arr[2]))
 	return(img)
 	
-def Main(filename):
+def Main(coverPath, msgPath, is_encode):
 	
-	is_img = False
-	imageFolder = "Imagens/"
-	textFolder = "Textos/"
+	is_img = True
+
+	msgFileName = msgPath.split("/")[-1:][0]
+
+	msgExtension = msgFileName.split(".")[1]
+
+	if msgExtension == 'txt':
+		is_img = False
 
 	if is_img:
 		
-		hiddenImage = Image.open(imageFolder + 'lilMona.jpg')
+		hiddenImage = Image.open(msgPath)
 		# get the md5 hash of the image to be hidden
-		hiddenImageHash = getImageMd5Hash(hiddenImage)
+		messageHash = getImageMd5Hash(hiddenImage)
 		smallImage = pil2array(hiddenImage)
 		message = img2arr(smallImage)
 	else:
-		message = open(textFolder+'alice30.txt','rb').read()
+		message = open(msgPath,'rb').read()
 		messageHash = hashlib.md5(message).hexdigest()
 	
 
 
 	# open cover image and transform it to an array
-	coverImage = Image.open(imageFolder + filename)
+	coverImage = Image.open(coverPath)
 	
 	
 	## ------------------- Hidding image or text -------------------------- ##
 	print ("Imagem do tipo : %s\n" % coverImage.mode)
 	print ("Entrando no InsertLSB")
+	ti = time.time()
 	stegoImg = lsb.InsertLSB(coverImage, message, False, is_img)
+	tf = time.time()
+	print("The time to insert the message was: " + str(round(tf-ti,2)) + "s")
 	if stegoImg == -1:
 		return
 	## ------------------ Retreiving the image or text ------------------- ##
 	print ("Entrando em RetreiveLSB")
+	ti = time.time()
 	retInfo = lsb.RetreiveLSB(stegoImg, False,is_img)
+	tf = time.time()
+	print("The time to retreive the message was: " + str(round(tf-ti,2))+ "s")
 	stegoImg.save("Results/Stego1.png","PNG")
 	
 	if is_img:
 		retInfo = arr2img(retInfo)
 		retInfo = array2pil(np.asarray(retInfo))
-		
-		## ------------------ Comparing images ------------------------------- ##
-		retImgHash = getImageMd5Hash(retInfo)
-		if(retImgHash == hiddenImageHash):
-			print("The images are equal")
-		else:
-			print("Hash of original image: " + messageHash)
-			print("\nHash of retrived image: " + retImgHash)
+	
+		retHash = getImageMd5Hash(retInfo)
 		## ---------------- Saving and showing the results ------------------ ##
 		retInfo.save("Results/RetImg.png","PNG")
 		retInfo.show()
@@ -174,5 +180,4 @@ def Main(filename):
 	stegoImg.show()
 	
 if __name__ == "__main__":
-	# Image.open("Imagens/testColor.png")
-	Main("medium.png")
+	print("please run main.py")
