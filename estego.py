@@ -124,7 +124,6 @@ def Main(coverPath, msgPath, is_encode):
 		is_img = False
 
 	if is_img:
-		
 		hiddenImage = Image.open(msgPath)
 		# get the md5 hash of the image to be hidden
 		messageHash = getImageMd5Hash(hiddenImage)
@@ -141,21 +140,23 @@ def Main(coverPath, msgPath, is_encode):
 	
 	
 	## ------------------- Hidding image or text -------------------------- ##
-	print ("Imagem do tipo : %s\n" % coverImage.mode)
-	print ("Entrando no InsertLSB")
+	print ("Image type: %s\n" % coverImage.mode)
+	print ("Entering InsertLSB")
 	ti = time.time()
 	stegoImg = lsb.InsertLSB(coverImage, message, False, is_img)
 	tf = time.time()
 	print("The time to insert the message was: " + str(round(tf-ti,2)) + "s")
 	if stegoImg == -1:
 		return
+
+	stegoImg.save("Results/Stego1.png","PNG")
 	## ------------------ Retreiving the image or text ------------------- ##
-	print ("Entrando em RetreiveLSB")
+	print ("Entering ReceiveLSB")
 	ti = time.time()
 	retInfo = lsb.RetreiveLSB(stegoImg, False,is_img)
 	tf = time.time()
 	print("The time to retreive the message was: " + str(round(tf-ti,2))+ "s")
-	stegoImg.save("Results/Stego1.png","PNG")
+	
 	
 	if is_img:
 		retInfo = arr2img(retInfo)
